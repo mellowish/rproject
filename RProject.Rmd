@@ -1,0 +1,25 @@
+---
+title: "RPROJECT"
+author: "Melissa Lowe"
+date: "10/22/2018"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+1. Which lags are most associated with malaria incidence for temperature and total rainfall?
+
+2. Which region has the most malaria?
+
+3. In which regions is rainfall high? Temperature? How much do these variables vary across the country?
+
+4. Are cases clustered in a particular area of Mozambique? How does this overlap with rainfall and temperature? (think about maps here)
+
+5. Is malaria incidence going down or up over time? Does this depend on which region we’re looking at?
+
+```{r}
+dat1 <- read.csv("~/Desktop/MS YEAR 2/S1/R Class/R Class Notes/R-Class/MozSyntheticMalaria.csv")
+```
