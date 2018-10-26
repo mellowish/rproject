@@ -20,6 +20,431 @@ knitr::opts_chunk$set(echo = TRUE)
 
 5. Is malaria incidence going down or up over time? Does this depend on which region we’re looking at?
 
+The variables in the data are:
+
+rain is the weekly ave rainfall in mm
+
+rainTot is the weekly total rainfall in mm
+
+tavg is the weekly average temperature in Celcius
+
+rh(%)is the relative humidity in %
+
+sd (mmHg) is  the  saturation  vapor  pressure  deficit  in  mm  of  mercury  (another  measure  of humidity)
+
+psfc (hPa) is the surface barometric pressure (a general indicator of large-scale weather activity and exhibits a strong seasonal cycle)
+
+PopulationUN is the total population of the district
+
+u5weight is the proportion of the total population under 5 years of age
+
+malaria is the number of cases under 5 reported that week (this is simulated)
+
+DISTCODE is the unique identifier for a district, which can be linked to the shape file
+
+tabove[] all  of  the  tabove  are  number  of  days  that  week  that  temperature  was  above  a threshold (the number next to tabove)
+
+pabove[]all of the pabove are number of days that week that rainfall was above a threshold(the number next to pabove)
+
 ```{r}
-dat1 <- read.csv("~/Desktop/MS YEAR 2/S1/R Class/R Class Notes/R-Class/MozSyntheticMalaria.csv")
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(lattice)
+library(tidyverse)
+library(modelr)
+library(RColorBrewer)
+library(sp)
+library(maptools) 
+library(lattice)
+library(latticeExtra) # For layer()
+library(rgdal)
+library(classInt)
+library(gridExtra)
+library(grid)
+library(knitr)
+library(tmap)
+library(tmaptools)
+library(plot3D)
+library(rgl)
+library(threejs)
+
+```
+Shape Files:
+
+```{r}
+# read in the Moz shape file for districts
+polydist <- readShapePoly('~/Desktop/MS YEAR 2/S1/R Class/Moz_admin2.shp', IDvar="DISTCODE")
+#this is the polygon file. it's been developed with district codes. RStudio helps recall how to get things out of lists. They're shape files as R stores them
+plot(polydist)
+
+polyprov <- readShapePoly('~/Desktop/MS YEAR 2/S1/R Class/mozambique_admin1.shp', IDvar="admin_1")
+#this is the polygon file. it's been developed with province codes. RStudio helps recall how to get things out of lists. They're shape files as R stores them
+
+plot(polyprov)
+```
+
+
+Data Steps:
+
+```{r}
+dat1 <- read.csv("~/Desktop/MS YEAR 2/S1/R Class/MozSyntheticMalaria.csv")
+
+dat1$rainTotlag2 <- lag(dat1$rainTot, 2)
+
+dat1$rainTotlag4 <- lag(dat1$rainTot, 4)
+
+dat1$rainTotlag6 <- lag(dat1$rainTot, 6)
+
+dat1$rainTotlag8<- lag(dat1$rainTot, 8)
+
+
+dat1$tavglag2 <- lag(dat1$tavg, 2)
+
+dat1$tavglag4 <- lag(dat1$tavg, 4)
+
+dat1$tavglag6 <- lag(dat1$tavg, 6)
+
+dat1$tavglag8<- lag(dat1$tavg, 8)
+
+dat1$cpt <- (dat1$malaria/(dat1$Population_UN*dat1$u5weight))*1000
+
+dat1 <- mutate(dat1, all.date = as.Date(paste(dat1$Epiyear, dat1$Epiweek, "1", sep="-"), format="%Y-%U-%u")) #create a longterm date 
+
+dat1 <- subset(dat1, Epiyear <2017)
+
+#made low values of rainTot 1 so that a logged value of it is 0 on the low end to show range of total rain
+dat1$rainTot_log <- ifelse(dat1$rainTot <= 1, 1, log(dat1$rainTot))
+par(mfrow=c(1,2))
+hist(dat1$rainTot)
+hist(dat1$rainTot_log)
+
+```
+
+
+Questions: What was the mean malaria count by year over the study period? Box plot or line graph?
+
+```{r}
+
+
+mcpt <- ggplot(dat1, aes(Region, cpt, colour = as.factor(Epiyear))) + 
+  geom_boxplot() +
+  ggtitle(" Malaria Cases in under-5 Population")+
+  scale_color_brewer(palette="Purples")+
+  xlab("Region")+
+  ylab("Cases per Thousand")+ 
+  labs(colour="Year")+
+  theme_dark()
+
+
+raint <- ggplot(dat1, aes(Region, rainTot_log, colour = as.factor(Epiyear))) + 
+  geom_boxplot() +
+  ggtitle(" Average Log Weekly Rain by Region")+
+  scale_color_brewer(palette="Purples")+
+  xlab("Region")+
+  ylab("Log(Weekly Rain Average)")+ 
+  labs(colour="Year")+
+  theme_dark()
+
+
+
+tempt <- ggplot(dat1, aes(Region, tavg, colour = as.factor(Epiyear))) + 
+  geom_boxplot() +
+  ggtitle(" Average Weekly Temperature by Region")+
+  scale_color_brewer(palette="Purples")+
+  xlab("Region")+
+  ylab("Weekly Average Temperature")+ 
+  labs(colour="Year")+
+  theme_dark()
+
+par(bg = 'black', fg = 'white')
+mcpt
+raint
+tempt
+```
+
+```{r, echo=FALSE}
+
+dat1$Region_2 <- dat1$Region
+revalue(dat1$Region_2, c("Center"="CE","Coastal"="CO","Northern"="NO", "Southern"="SO"))
+dat1$Region_2 <- as.numeric(dat1$Region_2)
+```
+
+
+This plot is intended to three dimensionally show where cases are most elevated in relation to rain and temperature respectively lagged
+```{r}
+
+
+#scatterplot3js(x=dat1$rainTotlag8,y=dat1$tavglag8,z=dat1$cpt,size=0.4,color=as.factor(dat1$Region_2),bg="white")
+
+
+plot3d(dat1$rainTotlag8,dat1$tavglag8,dat1$cpt, xlab="Rain Lag 8", ylab= "Temp Lag 8", zlab= "Cases per Thousand", col=as.factor(dat1$Region_2))
+
+
+```
+
+
+```{r}
+
+tab1 <- dat1 %>% 
+  group_by(Epiyear) %>% 
+  summarise(
+  malaria_m = round(mean(malaria, na.rm = TRUE),2),
+  rainTot_med = round(median(rainTot, na.rm = TRUE),2),
+  tavg_m = round(mean(tavg, na.rm = TRUE),2),
+  rh = round(mean(rh, na.rm = TRUE),2)
+) 
+kable(tab1) #this is now a data frame. we can edit it to make it prettier
+
+
+# Let's make it more attractive
+colnames(tab1) <- c("Year", "Malaria", "Median Rainfall", "Average Temp (C)", "Relative Humidity")
+kable(tab1)
+
+
+```
+
+
+```{r}
+#as.factor(dat1$SQKM) # there are 142 levels in square km which means they are by district
+dat1 <- subset(dat1, dat1$Province != "MAPUTO CIDADE")
+
+dat1$admin_1 <- dat1$Province
+
+#want to know statistics for district code and year, rows are distcode and columns are years
+cpt <- as.data.frame(tapply(dat1$cpt, list(dat1$admin_1, dat1$Epiyear), sum))
+colnames(cpt) <- c("cpt10", "cpt11", "cpt12", "cpt13", "cpt14", "cpt15", "cpt16")
+rainTot <- as.data.frame(tapply(dat1$rainTot, list(dat1$admin_1, dat1$Epiyear), sum))
+colnames(rainTot) <- c("rain10", "rain11", "rain12", "rain13", "rain14", "rain15", "rain16")
+tavg <- as.data.frame(tapply(dat1$tavg, list(dat1$admin_1, dat1$Epiyear), mean))
+colnames(tavg) <- c("t10", "t11", "t12", "t13", "t14", "t15", "t16")
+thot<- as.data.frame(tapply(dat1$tabove30, list(dat1$admin_1, dat1$Epiyear), mean))
+colnames(thot) <- c("th10", "th11", "th12", "th13", "tc14", "th15", "th16")
+tcold <- as.data.frame(tapply(dat1$tbelow20, list(dat1$admin_1, dat1$Epiyear), mean))
+colnames(tcold) <- c("tc10", "tc11", "tc12", "tc13", "tc14", "tc15", "tc16")
+
+
+
+allStats <- as.data.frame(cbind(cpt, rainTot, tavg, thot, tcold))
+#rownames(allStats) #notice that the row names are the province names
+#colnames(allStats)
+
+allStats <- allStats[-6,]
+
+row.names(allStats) <- c("Cabo Delgado", "Gaza", "Inhambane", "Manica", "Maputo", "Nampula", "Nassa", "Sofala", "Tete", "Zambezia")
+
+provpolydat <- SpatialPolygonsDataFrame(polyprov, allStats)
+
+##### Now let's combine the `allStats` dataframe we created above with the `poly2` shapefile so that we can plot the statistics on the map.
+
+
+```
+
+```{r}
+par(mfrow=c(2,1))
+# MULTIPLE #
+tempPal <- brewer.pal(n = 7, name = "YlOrRd")
+rainPal <- brewer.pal(n = 7, name = "YlGnBu")
+coldPal <- brewer.pal(n = 6, name = "Blues")
+hotPal <- brewer.pal(n = 6, name = "Oranges")
+
+
+trellis.par.set(sp.theme(regions=list(col = rainPal)))
+
+p2 <- spplot(provpolydat, c("cpt11", "cpt12", "cpt13", "cpt14", "cpt15", "cpt16"), 
+       names.attr = c("2011", "2012", "2013", "2014", "2015", "2016"), 
+       colorkey=list(space="right"), scales = list(draw = FALSE), 
+       main = "Total under 5 malaria cases by year", 
+       as.table = TRUE, col.regions = tempPal, col='transparent', cuts=5)
+#invisible(dev.off())
+p2
+
+
+p1 <- spplot(provpolydat, c("rain11", "rain12", "rain13", "rain14", "rain15", "rain16"),
+       names.attr = c("2011", "2012", "2013", "2014", "2015", "2016"), 
+       colorkey=list(space="right"), scales = list(draw = FALSE), 
+       main = "Total rainfall by year", 
+       as.table = TRUE, col.regions = rainPal, col='transparent',  cuts=5)
+#invisible(dev.off())
+p1
+
+p3 <- spplot(provpolydat, c("tc10", "tc11", "tc12", "tc13", "tc14", "tc15", "tc16"),
+       names.attr = c("2010", "2011", "2012", "2013", "2014", "2015", "2016"), 
+       colorkey=list(space="right"), scales = list(draw = FALSE), 
+       main = "Frequency of Colder Temperatures by year", 
+       as.table = TRUE, col.regions = coldPal , col='transparent',  cuts=5)
+ p3
+ 
+ p4 <- spplot(provpolydat, c("th10", "th11", "th12", "th13", "tc14", "th15", "th16"),
+       names.attr = c("2010", "2011", "2012", "2013", "2014", "2015", "2016"), 
+       colorkey=list(space="right"), scales = list(draw = FALSE), 
+       main = "Frequency of Hotter Temperatures by year", 
+       as.table = TRUE, col.regions = tempPal, col='transparent',  cuts=5)
+ p4
+#invisible(dev.off())
+
+
+```
+
+
+
+```{r}
+#as.factor(dat1$SQKM) # there are 142 levels in square km which means they are by district
+#dat1 <- subset(dat1, dat1$Province != "MAPUTO CIDADE")
+
+dat1$admin_2 <- dat1$DISTCODE
+
+#want to know statistics for district code and year, rows are distcode and columns are years
+cpt <- as.data.frame(tapply(dat1$cpt, list(dat1$admin_2, dat1$Epiyear), sum))
+colnames(cpt) <- c("cpt10", "cpt11", "cpt12", "cpt13", "cpt14", "cpt15", "cpt16")
+rainTot <- as.data.frame(tapply(dat1$rainTot, list(dat1$admin_2, dat1$Epiyear), sum))
+colnames(rainTot) <- c("rain10", "rain11", "rain12", "rain13", "rain14", "rain15", "rain16")
+tavg <- as.data.frame(tapply(dat1$tavg, list(dat1$admin_2, dat1$Epiyear), mean))
+colnames(tavg) <- c("t10", "t11", "t12", "t13", "t14", "t15", "t16")
+thot<- as.data.frame(tapply(dat1$tabove30, list(dat1$admin_2, dat1$Epiyear), mean))
+colnames(thot) <- c("th10", "th11", "th12", "th13", "tc14", "th15", "th16")
+tcold <- as.data.frame(tapply(dat1$tbelow20, list(dat1$admin_2, dat1$Epiyear), mean))
+colnames(tcold) <- c("tc10", "tc11", "tc12", "tc13", "tc14", "tc15", "tc16")
+
+
+
+allStats2 <- as.data.frame(cbind(cpt, rainTot, tavg, thot, tcold))
+#rownames(allStats) #notice that the row names are the province names
+#colnames(allStats)
+
+
+
+rownames(allStats2)
+
+distpolydat <- SpatialPolygonsDataFrame(polydist, allStats2)
+```
+
+I am going to focus on Epiyear 2016 because that's where we appear to have the highest malaria, rainfall, and temperatures - this could also be because of more data within that year
+```{r}
+tempPal <- brewer.pal(n = 7, name = "YlOrRd")
+rainPal <- brewer.pal(n = 7, name = "YlGnBu")
+coldPal <- brewer.pal(n = 6, name = "Blues")
+hotPal <- brewer.pal(n = 6, name = "Oranges")
+
+# Different color scheme and cuts
+rain6 <- spplot(distpolydat, "rain16", col.regions = rainPal, cuts = 6, col = "transparent", 
+       main = "Rainfall total", sub = "2016")
+cpt6 <- spplot(distpolydat, "cpt16", col.regions = hotPal, cuts = 6, col = "transparent", 
+       main = "Malaria Cases oer Thousand, Under-5", sub = "2016")
+temp6 <- spplot(distpolydat, "t16", col.regions = tempPal, cuts = 6, col = "transparent", 
+       main = "Average Temperature", sub = "2016")
+
+grid.arrange(rain6, cpt6,temp6, ncol = 3)
+```
+
+
+
+
+
+```{r}
+par(mfrow=c(2,1))
+
+
+
+
+trellis.par.set(sp.theme(regions=list(col = rainPal)))
+
+p2 <- spplot(provpolydat, c("cpt11", "cpt12", "cpt13", "cpt14", "cpt15", "cpt16"), 
+       names.attr = c("2011", "2012", "2013", "2014", "2015", "2016"), 
+       colorkey=list(space="right"), scales = list(draw = FALSE), 
+       main = "Total under 5 malaria cases by year", 
+       as.table = TRUE, col.regions = tempPal, col='transparent', cuts=5)
+#invisible(dev.off())
+p2
+
+
+p1 <- spplot(provpolydat, c("rain11", "rain12", "rain13", "rain14", "rain15", "rain16"),
+       names.attr = c("2011", "2012", "2013", "2014", "2015", "2016"), 
+       colorkey=list(space="right"), scales = list(draw = FALSE), 
+       main = "Total rainfall by year", 
+       as.table = TRUE, col.regions = rainPal, col='transparent',  cuts=5)
+#invisible(dev.off())
+p1
+
+p3 <- spplot(provpolydat, c("tc10", "tc11", "tc12", "tc13", "tc14", "tc15", "tc16"),
+       names.attr = c("2010", "2011", "2012", "2013", "2014", "2015", "2016"), 
+       colorkey=list(space="right"), scales = list(draw = FALSE), 
+       main = "Frequency of Colder Temperatures by year", 
+       as.table = TRUE, col.regions = coldPal , col='transparent',  cuts=5)
+ p3
+ 
+ p4 <- spplot(provpolydat, c("th10", "th11", "th12", "th13", "tc14", "th15", "th16"),
+       names.attr = c("2010", "2011", "2012", "2013", "2014", "2015", "2016"), 
+       colorkey=list(space="right"), scales = list(draw = FALSE), 
+       main = "Frequency of Hotter Temperatures by year", 
+       as.table = TRUE, col.regions = tempPal, col='transparent',  cuts=5)
+ p4
+#invisible(dev.off())
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+lags <- seq(10)
+lag_names <- paste("lag", formatC(lags, width = nchar(max(lags)), flag = "0"), 
+  sep = "_")
+lag_functions <- setNames(paste("dplyr::lag(., ", lags, ")"), lag_names)
+
+sel <- select(dat1, rainTot)
+sel %>% mutate_at(vars(rainTot), funs_(lag_functions))
+```
+
+```{r}
+
+### RAINFALL
+ggplot(data = dat1) + 
+  geom_smooth(mapping = aes(x = Epiweek, y = cpt), color="green") +
+  geom_smooth(mapping = aes(x = Epiweek, y = rainTotlag8), color="red") +
+  geom_smooth(mapping = aes(x = Epiweek, y = rainTotlag6), color="pink") +
+  geom_smooth(mapping = aes(x = Epiweek, y = rainTotlag4), color="orange")+
+  scale_y_continuous(sec.axis = sec_axis(~.*2, name = "Weekly average temp")) +
+  labs(x = "Epidemiology week", y = "Cases per 1,000")
+
+### Temperature
+ggplot(data = dat1) + 
+  geom_smooth(mapping = aes(x = Epiweek, y = cpt), color="green") +
+  geom_smooth(mapping = aes(x = Epiweek, y = tavglag8), color="red") +
+  geom_smooth(mapping = aes(x = Epiweek, y = tavglag6), color="pink") +
+  geom_smooth(mapping = aes(x = Epiweek, y = tavglag4), color="orange")+
+  scale_y_continuous(sec.axis = sec_axis(~.*2, name = "Weekly average temp")) +
+  labs(x = "Epidemiology week", y = "Cases per 1,000")
+
+
+
+```
+
+par (mfrow=c(2,2))
+
+plot(dat1$rainTot, dat1$cpt)
+plot(dat1$rainTotlag2, dat1$cpt)
+plot(dat1$rainTotlag4, dat1$cpt)
+plot(dat1$rainTotlag8, dat1$cpt)
 ```
