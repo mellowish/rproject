@@ -120,7 +120,7 @@ p1 <- spplot(polydat, c("rain11", "rain12", "rain13", "rain14", "rain15", "rain1
        main = "Total rainfall by year", 
        as.table = TRUE, col.regions = rainPal, col='transparent',  cuts=5)
 #invisible(dev.off())
-
+trellis.par.set(sp.theme(regions=list(col = rainPal)))
 grid.arrange(p1, p2, ncol = 2)
 ```
 
